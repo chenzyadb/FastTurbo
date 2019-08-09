@@ -1,0 +1,7 @@
+id=systemfix
+name=FastTurbo Boost
+version=V2.8.0_history
+versionCode=50
+author=Chenzyadb@coolapk
+description=内置超强算法对手机CPU,GPU,MEM性能进行智能优化，同时加强日常使用项目设定，大幅提升手机使用体验
+minMagisk=1700
