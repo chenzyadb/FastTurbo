@@ -7,6 +7,8 @@
 #------------------------------------------------------
 #修改关键配置文件权限
 chmod 7777 /system/priv-app/FastTurbo/base.apk 
+chmod 0777 /system/bin/FastTurbo
+chmod 0777 /system/lib/krnln.so
 chmod 0666 /data/FastTurbo/FastTurbo.log
 chmod 0666 /data/FastTurbo/mode
 chmod 0666 /data/FastTurbo/zmode
@@ -39,44 +41,47 @@ function chwrite() {   #修改内核参数（高级）
 		chmod 0444 $2
 	fi
 }
-function set_io() {    #I/O调整
-if [ -d $2 ] ; then
-	if [ -f $2/queue/scheduler ]; then
-		if [ `grep -c $1 $2/queue/scheduler` = 1 ]; then
-			write $2/queue/scheduler $1
-			chwrite 0 $2/queue/iostats
-			chwrite 128 $2/queue/nr_requests
-			chwrite 0 $2/queue/iosched/slice_idle
-			chwrite 1 $2/queue/rq_affinity
-			chwrite 1 $2/queue/nomerges
-			chwrite 0 $2/queue/add_random
-			chwrite 0 $2/queue/rotational
-			chwrite 0 $2/bdi/min_ratio
-			chwrite 100 $2/bdi/max_ratio
-			chwrite 2048 /sys/devices/virtual/bdi/179:0/read_ahead_kb
-			if [ $1 = "cfq" ] ; then
-			write $2/queue/read_ahead_kb 256
-			else
-			write $2/queue/read_ahead_kb 2048
-			fi
-  		fi
-	fi
-fi	
-}
 #得到SOC型号
 SOC=""
 SOC=`getprop ro.product.board | tr '[:upper:]' '[:lower:]'`
 if  [ $SOC = "" ] ; then
 SOC=`getprop ro.chipname | tr '[:upper:]' '[:lower:]'`
 fi
+case $SOC in msm*)
+qualcomm_soc="true"
+esac
+case $SOC in sdm*)
+qualcomm_soc="true"
+esac
 #得到GPU信息
 if [ -e /sys/class/kgsl/kgsl-3d0/devfreq/governor ] ; then
- GPU_DIR=/sys/class/kgsl/kgsl-3d0/
+GPU_DIR=/sys/class/kgsl/kgsl-3d0/
+GPU_SUB="adreno"
 elif [ -e /sys/devices/soc.0/1c00000.qcom,kgsl-3d0/kgsl/kgsl-3d0/devfreq/governor ] ; then
- GPU_DIR=/sys/devices/soc.0/1c00000.qcom,kgsl-3d0/kgsl/kgsl-3d0/
+GPU_DIR=/sys/devices/soc.0/1c00000.qcom,kgsl-3d0/kgsl/kgsl-3d0/
+GPU_SUB="adreno"
 elif [ -d /sys/devices/e8600000.mali/ ] ; then
- GPU_DIR=/sys/devices/e8600000.mali/
-fi 
+GPU_DIR=/sys/devices/e8600000.mali/
+GPU_SUB="mali"
+elif [ -d "/sys/devices/*.mali" ]; then
+GPU_DIR="/sys/devices/*.mali"
+GPU_SUB="mali"
+elif [ -d "/sys/devices/*.gpu" ]; then
+GPU_DIR="/sys/devices/*.gpu"
+GPU_SUB="mali"
+elif [ -d "/sys/devices/platform/mali.0" ]; then
+GPU_DIR="/sys/devices/platform/mali.0"
+GPU_SUB="mali"
+elif [ -d "/sys/devices/platform/mali-*.0" ]; then
+GPU_DIR="/sys/devices/platform/mali-*.0"
+GPU_SUB="mali"
+elif [ -d "/sys/module/mali/parameters" ]; then
+GPU_DIR="/sys/module/mali/parameters"
+GPU_SUB="mali"
+elif [ -d "/sys/class/misc/mali0" ]; then
+GPU_DIR="/sys/class/misc/mali0"
+GPU_SUB="mali"
+fi
 if [ -e $GPU_DIR/devfreq/governor ] ; then
 GPU_MIN=`cat $GPU_DIR/devfreq/min_freq`
 GPU_MAX=`cat $GPU_DIR/devfreq/max_freq`
@@ -85,20 +90,35 @@ GPU_MIN=`cat $GPU_DIR/devfreq/gpufreq/min_freq`
 GPU_MAX=`cat $GPU_DIR/devfreq/gpufreq/max_freq`
 fi
 #得到CPU信息
-freq0=`cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq`
-freq1=`cat /sys/devices/system/cpu/cpu1/cpufreq/cpuinfo_max_freq`
-freq2=`cat /sys/devices/system/cpu/cpu2/cpufreq/cpuinfo_max_freq`
-freq3=`cat /sys/devices/system/cpu/cpu3/cpufreq/cpuinfo_max_freq`
-freq4=`cat /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_max_freq`
-freq5=`cat /sys/devices/system/cpu/cpu5/cpufreq/cpuinfo_max_freq`
-freq6=`cat /sys/devices/system/cpu/cpu6/cpufreq/cpuinfo_max_freq`
-freq7=`cat /sys/devices/system/cpu/cpu7/cpufreq/cpuinfo_max_freq`
-freq8=`cat /sys/devices/system/cpu/cpu8/cpufreq/cpuinfo_max_freq`
-freq9=`cat /sys/devices/system/cpu/cpu9/cpufreq/cpuinfo_max_freq`
 core_num=`cat /sys/devices/system/cpu/kernel_max`
+min_core_num_1=$(cat /sys/devices/system/cpu/cpu0/core_ctl/min_cpus)
+min_core_num_2=$(cat /sys/devices/system/cpu/cpu4/core_ctl/min_cpus)
+freq0=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)
+freq1=$(cat /sys/devices/system/cpu/cpu1/cpufreq/cpuinfo_max_freq)
+freq2=$(cat /sys/devices/system/cpu/cpu2/cpufreq/cpuinfo_max_freq)
+freq3=$(cat /sys/devices/system/cpu/cpu3/cpufreq/cpuinfo_max_freq)
+freq4=$(cat /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_max_freq)
+freq5=$(cat /sys/devices/system/cpu/cpu5/cpufreq/cpuinfo_max_freq)
+freq6=$(cat /sys/devices/system/cpu/cpu6/cpufreq/cpuinfo_max_freq)
+freq7=$(cat /sys/devices/system/cpu/cpu7/cpufreq/cpuinfo_max_freq)
+freq8=$(cat /sys/devices/system/cpu/cpu8/cpufreq/cpuinfo_max_freq)
+freq9=$(cat /sys/devices/system/cpu/cpu9/cpufreq/cpuinfo_max_freq)
+if [ $core_num = "7" ] ; then
+if [ ${min_core_num_1} -lt 4 ] ; then
+freq1=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)
+freq2=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)
+freq3=$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq)
+fi
+if [ ${min_core_num_2} -lt 4 ] ; then
+freq5=$(cat /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_max_freq)
+freq6=$(cat /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_max_freq)
+freq7=$(cat /sys/devices/system/cpu/cpu4/cpufreq/cpuinfo_max_freq)
+fi
+fi
 #得到RAM信息
 ram_value=$(free | grep Mem | awk '{print $2}')
 #得到模块配置参数
+mode="turbo"
 mode=`cat /data/FastTurbo/mode`
 ZR=`cat /data/FastTurbo/zmode`
 adreno_mode=`cat /data/FastTurbo/amode`
@@ -115,44 +135,111 @@ lpl_fix=`cat /data/FastTurbo/lpl_fix`
 dse_fix=`cat /data/FastTurbo/dse_fix`
 #得到手机信息
 tinfo=$(date +"%d-%m-%Y %r")
-sdk=`getprop ro.build.version.sdk | tr '[:upper:]' '[:lower:]'`
+API=`getprop ro.build.version.sdk | tr '[:upper:]' '[:lower:]'`
 aver=`getprop ro.build.version.release | tr '[:upper:]' '[:lower:]'`
 vendor=`getprop ro.product.manufacturer | tr '[:upper:]' '[:lower:]'`
 id=`getprop ro.product.model | tr '[:upper:]' '[:lower:]'`
+ROM=$(getprop ro.build.display.id) 2>/dev/null
+KERNEL=$(uname -r) 2>/dev/null
 #手机和模块信息显示
 echo "时间：$tinfo " > /data/FastTurbo/FastTurbo.log
 echo "=========================" |  tee -a $LOG;
 echo "* SOC型号：$SOC" |  tee -a $LOG;
 echo "* Android Verson: $aver" |  tee -a $LOG;
-echo "* Android SDK: $sdk" |  tee -a $LOG;
+echo "* Android API: $API" |  tee -a $LOG;
 echo "* 制造商：$vendor" |  tee -a $LOG;
 echo "* 手机型号：$id" |  tee -a $LOG;
+echo "* ROM：$ROM" |  tee -a $LOG;
+echo "* 内核: $KERNEL" |  tee -a $LOG;
 echo "* 核心频率获取完毕，频率列表如下：" |  tee -a $LOG;
-echo "* $freq0 $freq1 $freq2 $freq3" |  tee -a $LOG;
-echo "* $freq4 $freq5 $freq6 $freq7" |  tee -a $LOG;
+echo "* ${freq0} ${freq1} ${freq2} ${freq3}" |  tee -a $LOG;
+echo "* ${freq4} ${freq5} ${freq6} ${freq7}" |  tee -a $LOG;
 if [ $core_num = "9" ] ; then
-echo "* $freq8 $freq9" |  tee -a $LOG;
+echo "* ${freq8} ${freq9}" |  tee -a $LOG;
 fi
 echo "* 内存大小：$ram_value" |  tee -a $LOG;
-echo "* GPU频率：$GPU_MAX" |  tee -a $LOG;
-if [ $mode = "gamexe" ] ; then
-echo "* FastTurbo处于Game X Extreme模式" |  tee -a $LOG;
-elif [ $mode = "turbo" ] ; then
-echo "* FastTurbo处于Turbo模式" |  tee -a $LOG;
-elif [ $mode = "balance" ] ; then
-echo "* FastTurbo处于Balance模式" |  tee -a $LOG;
+if [ $GPU_SUB = "adreno" ] ; then
+echo "* GPU供应商：Qualcomm Adreno" |  tee -a $LOG;
 else
-echo "* FastTurbo处于Powersave模式" |  tee -a $LOG;
+echo "* GPU供应商：ARM Mali" |  tee -a $LOG;
 fi
+echo "* GPU频率：$GPU_MAX" |  tee -a $LOG;
+echo "* FastTurbo处于$mode模式" |  tee -a $LOG;
 echo "=========================" |  tee -a $LOG;
-echo "* FastTurbo初始化完毕" |  tee -a $LOG;
-wmode="/data/FastTurbo/mode"
-if [ $mode = "" ] ; then
-echo "* 获取预设模式失败，已调整为turbo" |  tee -a $LOG;
-mode="turbo"
-echo "turbo" > $wmode
+#====================SmartCore====================
+#-gt是大于
+#-lt是小于
+#-eq是等于
+#-ne是不等于
+#-ge是大于等于
+echo "* FastTurbo SmartCore 初始化..." |  tee -a $LOG;
+soc_type="" #SOC类型
+if [ $core_num = "7" ] ; then
+if [ ${freq0} -eq ${freq7} ] ; then
+ if [ ${freq0} -gt 1700000 ] ; then
+  soc_type="mid"
+ else
+  soc_type="low"
+ fi
+elif [ ${freq4} -eq ${freq7} ] ; then
+ if [ ${freq0} -gt ${freq7} ] ; then
+  if [ ${freq0} -gt 1950000 ] ; then
+   soc_type="high"
+  elif [ ${freq0} -gt 1600000 ] ; then
+   soc_type="mid"  
+  else
+   soc_type="low"
+  fi
+ else
+  if [ ${freq7} -gt 1950000 ] ; then
+   soc_type="high" 
+  elif [ ${freq7} -gt 1600000 ] ; then
+   soc_type="mid"  
+  else
+   soc_type="low"
+  fi
+ fi
+elif [ ${freq2} -eq ${freq7} ] ; then
+  if [ ${freq0} -eq ${freq1} ] ; then
+   soc_type="high"
+  fi
+elif [ ${freq0} -eq ${freq5} ] ; then
+  if [ ${freq6} -eq ${freq7} ] ; then
+   soc_type="high"
+  fi
 fi
-#干掉高通热插拔
+elif [ $core_num = "5" ] ; then
+soc_type="mid"
+elif [ $core_num = "3" ] ; then
+ if [ ${freq0} -gt 1800000 ] ; then
+ soc_type="mid"
+ else
+ soc_type="low"
+ fi
+fi
+if [ $soc_type = "" ] ; then
+echo "* FastTurbo SmartCore 初始化失败." |  tee -a $LOG;
+soc_type="mid"
+else
+echo "* FastTurbo SmartCore 初始化成功！" |  tee -a $LOG;
+if [ $soc_type = "high" ] ; then
+ echo "* 检测到高端SOC." |  tee -a $LOG;
+elif [ $soc_type = "mid" ] ; then
+ echo "* 检测到中端SOC." |  tee -a $LOG;
+elif [ $soc_type = "low" ] ; then
+ echo "* 检测到低端SOC." |  tee -a $LOG;
+fi
+fi
+#=================================================
+if [ -e /system/bin/lkt ] ; then
+echo "* 检测到您已安装LKT模块，可能会与FastTurbo冲突." |  tee -a $LOG;
+echo "* 这条信息仅为提示作用，FastTurbo仍然会执行优化." |  tee -a $LOG;
+fi
+if [ $core_num = "1" ] ; then
+echo "* FastTurbo 不支持双核处理器优化! " |  tee -a $LOG;
+exit 0 
+fi
+#干掉热插拔
 # Performance daemon
 stop "perfd"
 # Thermal daemon
@@ -162,12 +249,19 @@ stop "mpdecision"
 stop "thermal-engine"
 # perflock HAL
 stop "perf-hal-1-0"
+if [ -e /data/system/perfd/default_values ]; then
+rm /data/system/perfd/default_values
+fi
+if [ $qualcomm_soc = "true" ] ; then
+#区分高通和其他soc
 chwrite 0 /sys/module/msm_thermal/core_control/enabled
-chwrite 0 /proc/hps/enable
 chwrite 0 /sys/module/msm_thermal/parameters/enabled
+else
+chwrite 0 /proc/hps/enable
 chwrite 0 /sys/power/cpuhotplug/enabled
 chwrite 0 /sys/devices/system/cpu/cpuhotplug/enabled
-echo "* 温控优化完毕" |  tee -a $LOG;
+fi
+echo "* 温控屏蔽完毕" |  tee -a $LOG;
 #关闭原有CPU boost
 if [ -e /sys/module/msm_performance/parameters/touchboost ]; then
  chmod 0644 /sys/module/msm_performance/parameters/touchboost
@@ -192,10 +286,44 @@ chwrite 450 /sys/class/power_supply/bms/temp_warm
 echo "* 快充温度阀值已自动调整" |  tee -a $LOG;
 fi
 fi
+if [ $mode = "powersave" ] ; then
+if [ -e /sys/devices/system/cpu/cpu4/core_ctl/min_cpus ] ; then
+if [ $core_num = "7" ] ; then
+chwrite 2 /sys/devices/system/cpu/cpu0/core_ctl/min_cpus
+chwrite 2 /sys/devices/system/cpu/cpu4/core_ctl/min_cpus
+chwrite 2 /sys/devices/system/cpu/cpu0/core_ctl/max_cpus
+chwrite 2 /sys/devices/system/cpu/cpu4/core_ctl/max_cpus
+elif [ $core_num = "5" ] ; then
+chwrite 2 /sys/devices/system/cpu/cpu0/core_ctl/min_cpus
+chwrite 1 /sys/devices/system/cpu/cpu4/core_ctl/min_cpus
+chwrite 2 /sys/devices/system/cpu/cpu0/core_ctl/max_cpus
+chwrite 1 /sys/devices/system/cpu/cpu4/core_ctl/max_cpus
+fi
+fi
+else
+if [ -e /sys/devices/system/cpu/cpu4/core_ctl/min_cpus ] ; then
+if [ $core_num = "7" ] ; then
+chwrite 4 /sys/devices/system/cpu/cpu0/core_ctl/max_cpus
+chwrite 4 /sys/devices/system/cpu/cpu4/core_ctl/max_cpus
+chwrite 4 /sys/devices/system/cpu/cpu0/core_ctl/min_cpus
+chwrite 4 /sys/devices/system/cpu/cpu4/core_ctl/min_cpus
+elif [ $core_num = "5" ] ; then
+chwrite 4 /sys/devices/system/cpu/cpu0/core_ctl/max_cpus
+chwrite 2 /sys/devices/system/cpu/cpu4/core_ctl/max_cpus
+chwrite 4 /sys/devices/system/cpu/cpu0/core_ctl/min_cpus
+chwrite 2 /sys/devices/system/cpu/cpu4/core_ctl/min_cpus
+fi
+fi
+if [ -e /sys/devices/system/cpu/cpu4/core_ctl/busy_down_thres ] ; then
+chwrite 0 /sys/devices/system/cpu/cpu4/core_ctl/busy_down_thres
+chwrite 0 /sys/devices/system/cpu/cpu4/core_ctl/busy_up_thres
+fi
+fi
 #powersave模式下关闭核心以省电
 if [ -e /sys/devices/system/cpu/cpu1/online ] ; then
 if [ $mode = "powersave" ] ; then
 if [ $core_num = "9" ] ; then
+chwrite 1 /sys/devices/system/cpu/cpu0/online
 chwrite 1 /sys/devices/system/cpu/cpu1/online
 chwrite 0 /sys/devices/system/cpu/cpu2/online
 chwrite 0 /sys/devices/system/cpu/cpu3/online
@@ -206,6 +334,7 @@ chwrite 0 /sys/devices/system/cpu/cpu7/online
 chwrite 1 /sys/devices/system/cpu/cpu8/online
 chwrite 0 /sys/devices/system/cpu/cpu9/online
 elif [ $core_num = "7" ] ; then
+chwrite 0 /sys/devices/system/cpu/cpu0/online
 chwrite 0 /sys/devices/system/cpu/cpu1/online
 chwrite 0 /sys/devices/system/cpu/cpu2/online
 chwrite 1 /sys/devices/system/cpu/cpu3/online
@@ -214,20 +343,22 @@ chwrite 1 /sys/devices/system/cpu/cpu5/online
 chwrite 1 /sys/devices/system/cpu/cpu6/online
 chwrite 0 /sys/devices/system/cpu/cpu7/online
 elif [ $core_num = "5" ] ; then
+chwrite 0 /sys/devices/system/cpu/cpu0/online
 chwrite 0 /sys/devices/system/cpu/cpu1/online
 chwrite 1 /sys/devices/system/cpu/cpu2/online
 chwrite 1 /sys/devices/system/cpu/cpu3/online
 chwrite 1 /sys/devices/system/cpu/cpu4/online
 chwrite 0 /sys/devices/system/cpu/cpu5/online
 elif [ $core_num = "3" ] ; then
+chwrite 1 /sys/devices/system/cpu/cpu0/online
 chwrite 1 /sys/devices/system/cpu/cpu1/online
 chwrite 1 /sys/devices/system/cpu/cpu2/online
 chwrite 0 /sys/devices/system/cpu/cpu3/online
-elif [ $core_num = "1" ] ; then
-chwrite 0 /sys/devices/system/cpu/cpu1/online
 fi
 else
 #将所有核心启动
+if [ $core_num = "9" ] ; then
+chwrite 1 /sys/devices/system/cpu/cpu0/online
 chwrite 1 /sys/devices/system/cpu/cpu1/online
 chwrite 1 /sys/devices/system/cpu/cpu2/online
 chwrite 1 /sys/devices/system/cpu/cpu3/online
@@ -237,6 +368,28 @@ chwrite 1 /sys/devices/system/cpu/cpu6/online
 chwrite 1 /sys/devices/system/cpu/cpu7/online
 chwrite 1 /sys/devices/system/cpu/cpu8/online
 chwrite 1 /sys/devices/system/cpu/cpu9/online
+elif [ $core_num = "7" ] ; then
+chwrite 1 /sys/devices/system/cpu/cpu0/online
+chwrite 1 /sys/devices/system/cpu/cpu1/online
+chwrite 1 /sys/devices/system/cpu/cpu2/online
+chwrite 1 /sys/devices/system/cpu/cpu3/online
+chwrite 1 /sys/devices/system/cpu/cpu4/online
+chwrite 1 /sys/devices/system/cpu/cpu5/online
+chwrite 1 /sys/devices/system/cpu/cpu6/online
+chwrite 1 /sys/devices/system/cpu/cpu7/online
+elif [ $core_num = "5" ] ; then
+chwrite 1 /sys/devices/system/cpu/cpu0/online
+chwrite 1 /sys/devices/system/cpu/cpu1/online
+chwrite 1 /sys/devices/system/cpu/cpu2/online
+chwrite 1 /sys/devices/system/cpu/cpu3/online
+chwrite 1 /sys/devices/system/cpu/cpu4/online
+chwrite 1 /sys/devices/system/cpu/cpu5/online
+elif [ $core_num = "3" ] ; then
+chwrite 1 /sys/devices/system/cpu/cpu0/online
+chwrite 1 /sys/devices/system/cpu/cpu1/online
+chwrite 1 /sys/devices/system/cpu/cpu2/online
+chwrite 1 /sys/devices/system/cpu/cpu3/online
+fi
 fi
 fi
 #禁用温控(内核级）
@@ -344,16 +497,16 @@ chwrite “64000″ /proc/sys/kernel/msgmax
 chwrite “10″ /proc/sys/fs/lease-break-time
 chwrite “500,512000,64,2048″ /proc/sys/kernel/sem
 fi
-if [ -e /sys/kernel/debug/sched_features ] ; then
- echo "NO_NORMALIZED_SLEEPER" > /sys/kernel/debug/sched_features 
- echo "GENTLE_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features 
- echo "NO_NEW_FAIR_SLEEPERS" > /sys/kernel/debug/sched_features 
- echo "WAKEUP_PREEMPT" > /sys/kernel/debug/sched_features
- echo "NO_AFFINE_WAKEUPS" > /sys/kernel/debug/sched_features 
-fi
-if [ -e /sys/kernel/sched/gentle_fair_sleepers ] ; then
- echo "0" > /sys/kernel/sched/gentle_fair_sleepers
-fi
+if [ -e /sys/kernel/debug/sched_features ]; then
+ chwrite "NO_NORMALIZED_SLEEPER" /sys/kernel/debug/sched_features
+ chwrite "GENTLE_FAIR_SLEEPERS" /sys/kernel/debug/sched_features
+ chwrite "NO_NEW_FAIR_SLEEPERS" /sys/kernel/debug/sched_features
+ chwrite "WAKEUP_PREEMPT" /sys/kernel/debug/sched_features
+ chwrite "NO_AFFINE_WAKEUPS" /sys/kernel/debug/sched_features
+fi;
+if [ -e /sys/kernel/sched/gentle_fair_sleepers ]; then
+ chwrite "0" /sys/kernel/sched/gentle_fair_sleepers
+fi;
 echo "* 系统内核优化完毕" |  tee -a $LOG;
 fi
 #优化Google套件
@@ -373,11 +526,12 @@ fi
 #优化触控以提升游戏体验
 if [ $touch_fix = "true" ] ; then
 if [ -e /sys/kernel/fp_boost/enabled ] ; then
-write /sys/kernel/fp_boost/enabled 1
+chwrite "1" /sys/kernel/fp_boost/enabled 
 echo "* 触控优化完毕" |  tee -a $LOG;
 fi
 fi
 #GPU优化部分
+if [ $GPU_SUB = "adreno" ] ; then
 GPU_PWR=$(cat $GPU_DIR/num_pwrlevels) 2>/dev/null
 GPU_PWR=$(($GPU_PWR-1))
 GPU_TURBO=$(awk -v x=$GPU_PWR 'BEGIN{print((x/2)+0.5)}')
@@ -394,6 +548,8 @@ elif [ $mode = "balance" ] ; then
 chwrite "msm-adreno-tz" $GPU_DIR/devfreq/governor
 fi
 fi
+fi
+if [ $GPU_SUB = "mali" ] ; then
 if [ -e $GPU_DIR/devfreq/gpufreq/governor ] ; then
 #Mali GPU
 if [ $mode = "gamexe" ] ; then
@@ -406,7 +562,8 @@ elif [ $mode = "balance" ] ; then
 chwrite "pm_qos" $GPU_DIR/devfreq/gpufreq/governor
 fi
 fi
-if [ -e $GPU_DIR/devfreq/governor ] ; then
+fi
+if [ $GPU_SUB = "adreno" ] ; then
 #Qualcomm
 if [ $mode = "gamexe" ] ; then
 chwrite $GPU_MAX "$GPU_DIR/max_gpuclk"
@@ -422,7 +579,6 @@ chwrite 1 "$GPU_DIR/force_bus_on"
 chwrite 1 "$GPU_DIR/force_clk_on"
 chwrite 1 "$GPU_DIR/force_rail_on"
 write "/proc/gpufreq/gpufreq_limited_thermal_ignore" 1
-write "/proc/mali/dvfs_enable" 1
 elif [ $mode = "turbo" ] ; then
 chwrite $GPU_MAX "$GPU_DIR/max_gpuclk"
 chwrite $GPU_MAX "$GPU_DIR/devfreq/max_freq" 
@@ -437,7 +593,6 @@ chwrite 1 "$GPU_DIR/force_bus_on"
 chwrite 1 "$GPU_DIR/force_clk_on"
 chwrite 1 "$GPU_DIR/force_rail_on"
 write "/proc/gpufreq/gpufreq_limited_thermal_ignore" 1
-write "/proc/mali/dvfs_enable" 1
 elif [ $mode = "balance" ] ; then
 chwrite $GPU_MAX "$GPU_DIR/max_gpuclk"
 chwrite $GPU_MAX "$GPU_DIR/devfreq/max_freq" 
@@ -451,38 +606,44 @@ chwrite 0 "$GPU_DIR/force_bus_on"
 chwrite 0 "$GPU_DIR/force_clk_on"
 chwrite 0 "$GPU_DIR/force_rail_on"
 write "/proc/gpufreq/gpufreq_limited_thermal_ignore" 1
-write "/proc/mali/dvfs_enable" 1
+chwrite "6000" /sys/module/adreno_idler/parameters/adreno_idler_idleworkload 
+chwrite '15' /sys/module/adreno_idler/parameters/adreno_idler_downdifferential
+chwrite '15' /sys/module/adreno_idler/parameters/adreno_idler_idlewait
+else
+if [ -e /sys/module/adreno_idler/parameters/adreno_idler_idlewait ] ; then
+chwrite "10000" /sys/module/adreno_idler/parameters/adreno_idler_idleworkload 
+chwrite '40' /sys/module/adreno_idler/parameters/adreno_idler_downdifferential 
+chwrite '24' /sys/module/adreno_idler/parameters/adreno_idler_idlewait 
+echo "* Powersave模式下Adreno GPU空载怠速优化完毕" |  tee -a $LOG;
+fi
 fi
 if [ $mode = "gamexe" ] ; then
 if [ -e /sys/module/adreno_idler/parameters/adreno_idler_active ]; then
 chmod 0644 /sys/module/adreno_idler/parameters/adreno_idler_active
 echo "0" > /sys/module/adreno_idler/parameters/adreno_idler_active
-fi;
-echo "* gamexe模式下GPU优化完毕" |  tee -a $LOG;
+fi
 elif [ $mode = "turbo" ] ; then
 if [ -e /sys/module/adreno_idler/parameters/adreno_idler_active ]; then
 chmod 0644 /sys/module/adreno_idler/parameters/adreno_idler_active
 echo "0" > /sys/module/adreno_idler/parameters/adreno_idler_active
 fi;
-echo "* turbo模式下GPU优化完毕" |  tee -a $LOG;
 elif [ $mode = "balance" ] ; then
 if [ -e /sys/module/adreno_idler/parameters/adreno_idler_active ]; then
 chmod 0644 /sys/module/adreno_idler/parameters/adreno_idler_active
 echo "1" > /sys/module/adreno_idler/parameters/adreno_idler_active
 fi;
-echo "* balance模式下GPU优化完毕" |  tee -a $LOG;
 else
 if [ -e /sys/module/adreno_idler/parameters/adreno_idler_active ]; then
 chmod 0644 /sys/module/adreno_idler/parameters/adreno_idler_active
 echo "1" > /sys/module/adreno_idler/parameters/adreno_idler_active
 fi;
-echo "* powersave模式下GPU优化完毕" |  tee -a $LOG;
 fi
 if [ -e /sys/module/simple_gpu_algorithm/parameters/simple_gpu_activate ]; then 
- echo "1" > /sys/module/simple_gpu_algorithm/parameters/simple_gpu_activate
- echo "Y" > /sys/module/simple_gpu_algorithm/parameters/simple_gpu_activate
+ chwrite "1" /sys/module/simple_gpu_algorithm/parameters/simple_gpu_activate
+ chwrite "Y" /sys/module/simple_gpu_algorithm/parameters/simple_gpu_activate
  echo "* GPU Algorithm 优化完毕" | tee -a $LOG;
 fi;
+echo "* $mode模式下Adreno GPU优化完毕" |  tee -a $LOG;
 if [ -e $GPU_DIR/devfreq/adrenoboost ] ; then
 if [ $adreno_mode = "max" ] ; then 
  echo "3" > $GPU_DIR/devfreq/adrenoboost
@@ -501,8 +662,10 @@ else
 echo "error" > /data/FastTurbo/amode
 echo "* 设备不支持adreno加速" |  tee -a $LOG;
 fi
-elif [ -e $GPU_DIR/devfreq/gpufreq/governor ] ; then
+elif [ $GPU_SUB = "mali" ] ; then
 #Mali GPU
+echo "error" > /data/FastTurbo/amode
+echo "* 设备不支持adreno加速" |  tee -a $LOG;
 if [ -e $GPU_DIR/devfreq/gpufreq/mali_ondemand/vsync_upthreshold ] ; then
 if [ $mode = "gamexe" ] ; then
 chwrite 20 $GPU_DIR/devfreq/gpufreq/mali_ondemand/vsync_upthreshold
@@ -522,6 +685,9 @@ elif [ $mode = "powersave" ] ; then
 chwrite 80 $GPU_DIR/devfreq/gpufreq/pm_qos/vsync_upthreshold
 chwrite 60 $GPU_DIR/devfreq/gpufreq/pm_qos/vsync_downdifferential
 echo "* powersave 模式下Mali GPU优化完毕" |  tee -a $LOG;
+fi
+if [ -e /proc/mali/dvfs_enable ] ; then
+chwrite "1" /proc/mali/dvfs_enable
 fi
 fi
 else
@@ -543,6 +709,7 @@ if [ -e /sys/devices/system/cpu/cpufreq/$GOV ]; then
 ML=/sys/devices/system/cpu/cpufreq/$GOV
 fi
 if [ -e /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ] ; then
+if [ $core_num = "9" ] ; then
 chwrite "$GOV" /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
 chwrite "$GOV" /sys/devices/system/cpu/cpu1/cpufreq/scaling_governor
 chwrite "$GOV" /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
@@ -553,6 +720,28 @@ chwrite "$GOV" /sys/devices/system/cpu/cpu6/cpufreq/scaling_governor
 chwrite "$GOV" /sys/devices/system/cpu/cpu7/cpufreq/scaling_governor
 chwrite "$GOV" /sys/devices/system/cpu/cpu8/cpufreq/scaling_governor
 chwrite "$GOV" /sys/devices/system/cpu/cpu9/cpufreq/scaling_governor
+elif [ $core_num = "7" ] ; then
+chwrite "$GOV" /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu1/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu5/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu6/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu7/cpufreq/scaling_governor
+elif [ $core_num = "5" ] ; then
+chwrite "$GOV" /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu1/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu4/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu5/cpufreq/scaling_governor
+elif [ $core_num = "3" ] ; then
+chwrite "$GOV" /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu1/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu2/cpufreq/scaling_governor
+chwrite "$GOV" /sys/devices/system/cpu/cpu3/cpufreq/scaling_governor
+fi
 fi
 if [ $GOV = "interactive" ] ; then
  echo "0" > $ML/boost 2>/dev/null
@@ -583,7 +772,7 @@ if [ $GOV = "interactive" ] ; then
  echo "0" > $MB/io_is_busy 2>/dev/null
  echo "60000" > $MB/min_sample_time 2>/dev/null
  echo "80000" > $MB/timer_slack 2>/dev/null
- echo "* turbo/gamexe模式下频率调整策略优化完毕" |  tee -a $LOG;
+ echo "* $mode模式下频率调整策略优化完毕" |  tee -a $LOG;
 elif [ $GOV = "ondemand" ] ; then
  echo "90" > $MB/up_threshold 2>/dev/null
  echo "85" > $MB/up_threshold_any_cpu_load 2>/dev/null
@@ -599,7 +788,7 @@ elif [ $GOV = "ondemand" ] ; then
  echo "2" > $ML/sampling_down_factor 2>/dev/null
  echo "10" > $ML/down_differential 2>/dev/null
  echo "35" > $ML/freq_step 2>/dev/null
- echo "* balance/powersave模式下频率调整策略优化完毕" |  tee -a $LOG;
+ echo "* $mode模式下频率调整策略优化完毕" |  tee -a $LOG;
 fi
 if [ -e /sys/module/cpu_input_boost/parameters/input_boost_duration ] ; then
 if [ $mode = "turbo" ] ; then
@@ -652,6 +841,12 @@ chmod 0644 /sys/module/cpu_input_boost/parameters/dynamic_stune_boost
 echo "20" > /sys/module/cpu_input_boost/parameters/dynamic_stune_boost
 echo "* powersave模式下CPU加速策略已调整" |  tee -a $LOG;
 fi
+fi
+if [ -e /proc/sys/kernel/hotplug ] ; then
+chwrite 0 /proc/sys/kernel/hotplug
+fi
+if [ -e /proc/sys/kernel/sched_boost ] ; then
+chwrite 1 /proc/sys/kernel/sched_boost
 fi
 #调整虚拟内存以保证系统高效运行
 if [ $vm_fix = "true" ] ; then
@@ -730,8 +925,79 @@ chwrite 100 /proc/sys/vm/swappiness
 fi
 #优化IO以提升文件独写速度
 if [ $io_fix = "true" ] ; then
-set_io deadline /sys/block/mmcblk0
-set_io deadline /sys/block/sda
+if [ $qualcomm_soc = "true" ] ; then
+if [ $mode = "turbo" ] ; then
+IO_mode="row"
+elif [ $mode = "gamexe" ] ; then
+IO_mode="row"
+else
+IO_mode="deadline"
+fi
+else
+IO_mode="deadline"
+fi
+MMC=$(ls -d /sys/block/mmc*)
+DM=$(ls -d /sys/block/dm-*)
+SD=$(ls -d /sys/block/sd*)
+LOOP=$(ls -d /sys/block/loop*)
+RAM=$(ls -d /sys/block/ram*)
+SCH=$(cat $NFS/scheduler.txt)
+if [ $mode = "gamexe" ]; then
+ RQ=2
+ NOM=0
+ NR=128
+ KB=2048
+elif [ $mode = "turbo" ]; then
+ RQ=2
+ NOM=0
+ NR=128
+ KB=1024
+elif [ $mode = "powersave" ]; then
+ RQ=0
+ NOM=0
+ NR=64
+ KB=256
+elif [ $mode = "balance" ]; then
+ RQ=2
+ NOM=0
+ NR=128
+ KB=512
+fi;
+for X in $MMC $SD $DM $LOOP $RAM $ZR
+do
+ chwrite "$IO_mode" $X/queue/scheduler 2>/dev/null
+ chwrite "0" $X/queue/rotational 2>/dev/null
+ chwrite "0" $X/queue/iostats 2>/dev/null
+ chwrite "0" $X/queue/add_random 2>/dev/null
+ chwrite "$NR" $X/queue/nr_requests 2>/dev/null
+ chwrite "$NOM" $X/queue/nomerges 2>/dev/null
+ chwrite "$RQ" $X/queue/rq_affinity 2>/dev/null
+ chwrite "$NR" $X/queue/read_ahead_kb 2>/dev/null
+ chwrite "0" $X/queue/iosched/slice_idle 2>/dev/null
+ chwrite "2" $X/queue/iosched/fifo_batch 2>/dev/null
+ chwrite "0" $X/queue/iosched/front_merges 2>/dev/null
+ chwrite "4" $X/queue/iosched/writes_starved 2>/dev/null
+ chwrite "350" $X/queue/iosched/read_expire 2>/dev/null
+ chwrite "3500" $X/queue/iosched/write_expire 2>/dev/null
+ chwrite "350" $X/queue/iosched/sync_read_expire 2>/dev/null
+ chwrite "3500" $X/queue/iosched/sync_write_expire 2>/dev/null
+ chwrite "350" $X/queue/iosched/async_read_expire 2>/dev/null
+ chwrite "3500" $X/queue/iosched/async_write_expire 2>/dev/null
+ chwrite "10" $X/queue/iosched/async_scale 2>/dev/null
+ chwrite "8" $X/queue/iosched/read_scale 2>/dev/null
+ chwrite "8" $X/queue/iosched/sync_scale 2>/dev/null
+ chwrite "12" $X/queue/iosched/write_scale 2>/dev/null
+done
+if [ "`ls /sys/devices/virtual/bdi/179*/read_ahead_kb`" ]; then
+ for RH in /sys/devices/virtual/bdi/179*/read_ahead_kb
+do
+ chwrite "$KB" $RH
+done
+fi; 2>/dev/null
+for I in `find /sys/devices/platform -name iostats`
+do
+ chwrite "0" $I
+done
 echo "* I/O性能优化完毕" |  tee -a $LOG;
 fi
 #优化Low Memory Killer以改善后台
@@ -794,7 +1060,7 @@ fi
 #Deep Sleep Enhancement 优化
 if [ $dse_fix = "true" ] ; then
 for i in $(ls /sys/class/scsi_disk/); do
- echo "temporary none" > /sys/class/scsi_disk/"$i"/cache_type
+ chwrite "temporary none" /sys/class/scsi_disk/"$i"/cache_type
  if [ -e /sys/class/scsi_disk/"$i"/cache_type ]; then
   DP=1
  fi;
@@ -857,49 +1123,36 @@ fi
 #优化CPU多任务性能以提升系统流畅度
 if [ -e /dev/cpuset/background/cpus ] ; then
 if [ $core_num = "7" ] ; then
-write /dev/cpuset/background/cpus "2-3"
-write /dev/cpuset/system-background/cpus "0-3"
-write /dev/cpuset/foreground/cpus "0-3,4-7"
-write /dev/cpuset/top-app/cpus "0-3,4-7"
-if [ $mode = "turbo" ] ; then
-chwrite 25 /proc/sys/kernel/sched_downmigrate
-chwrite 35 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "balance" ] ; then
-chwrite 35 /proc/sys/kernel/sched_downmigrate
-chwrite 55 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "powersave" ] ; then
-chwrite 55 /proc/sys/kernel/sched_downmigrate
-chwrite 75 /proc/sys/kernel/sched_upmigrate
-else
-chwrite 20 /proc/sys/kernel/sched_downmigrate
-chwrite 30 /proc/sys/kernel/sched_upmigrate
-fi
+chwrite "2-3" /dev/cpuset/background/cpus 
+chwrite "0-3" /dev/cpuset/system-background/cpus 
+chwrite "0-3,4-7" /dev/cpuset/foreground/cpus 
+chwrite "0-3,4-7" /dev/cpuset/top-app/cpus 
 echo "* 八核多任务优化已完成" |  tee -a $LOG;
 elif [ $core_num = "3" ] ; then
 #only 4core
-write /dev/cpuset/background/cpus "0-1"
-write /dev/cpuset/system-background/cpus "0-1"
-write /dev/cpuset/foreground/cpus "0-1,2-3"
-write /dev/cpuset/top-app/cpus "0-1,2-3"
-if [ $mode = "turbo" ] ; then
-chwrite 25 /proc/sys/kernel/sched_downmigrate
-chwrite 45 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "balance" ] ; then
-chwrite 30 /proc/sys/kernel/sched_downmigrate
-chwrite 50 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "powersave" ] ; then
-chwrite 40 /proc/sys/kernel/sched_downmigrate
-chwrite 60 /proc/sys/kernel/sched_upmigrate
-else
-chwrite 15 /proc/sys/kernel/sched_downmigrate
-chwrite 35 /proc/sys/kernel/sched_upmigrate
-fi
+chwrite "0-1" /dev/cpuset/background/cpus 
+chwrite "0-1" /dev/cpuset/system-background/cpus 
+chwrite "0-1,2-3" /dev/cpuset/foreground/cpus 
+chwrite "0-1,2-3" /dev/cpuset/top-app/cpus 
 echo "* 四核多任务优化已完成" |  tee -a $LOG;
 elif [ $core_num = "5" ] ; then
-write /dev/cpuset/background/cpus "2-3"
-write /dev/cpuset/system-background/cpus "0-3"
-chwrite 0-3,4-5 /dev/cpuset/foreground/cpus
-chwrite 0-3,4-5 /dev/cpuset/top-app/cpus
+chwrite "2-3" /dev/cpuset/background/cpus 
+chwrite "0-3" /dev/cpuset/system-background/cpus 
+chwrite "0-3,4-5" /dev/cpuset/foreground/cpus
+chwrite "0-3,4-5" /dev/cpuset/top-app/cpus
+echo "* 六核多任务优化已完成" |  tee -a $LOG;
+elif [ $core_num = "9" ] ; then
+chwrite "2-3" /dev/cpuset/background/cpus 
+chwrite "0-3" /dev/cpuset/system-background/cpus 
+chwrite "0-3,4-7,8-9" /dev/cpuset/foreground/cpus 
+chwrite "4-7,8-9" /dev/cpuset/top-app/cpus 
+echo "* 十核多任务优化已完成" |  tee -a $LOG;
+else
+#none
+echo "* 未知核心多任务优化已完成" |  tee -a $LOG;
+fi
+fi
+if [ $soc_type = "high" ] ; then
 if [ $mode = "turbo" ] ; then
 chwrite 55 /proc/sys/kernel/sched_downmigrate
 chwrite 65 /proc/sys/kernel/sched_upmigrate
@@ -913,56 +1166,90 @@ else
 chwrite 45 /proc/sys/kernel/sched_downmigrate
 chwrite 55 /proc/sys/kernel/sched_upmigrate
 fi
-echo "* 六核多任务优化已完成" |  tee -a $LOG;
-elif [ $core_num = "1" ] ; then
-if [ $mode = "turbo" ] ; then
-chwrite 15 /proc/sys/kernel/sched_downmigrate
-chwrite 35 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "balance" ] ; then
-chwrite 25 /proc/sys/kernel/sched_downmigrate
-chwrite 45 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "powersave" ] ; then
-chwrite 35 /proc/sys/kernel/sched_downmigrate
-chwrite 55 /proc/sys/kernel/sched_upmigrate
+if [ -e /proc/sys/kernel/sched_downmigrate ] ; then
+if [ $mode = "gamexe" ] ; then
+chwrite 50 /proc/sys/kernel/sched_downmigrate
+chwrite 50 /proc/sys/kernel/sched_upmigrate
+chwrite 8 /proc/sys/kernel/sched_spill_nr_run
+chwrite 85 /proc/sys/kernel/sched_spill_load
+elif [ $mode = "turbo" ] ; then
+chwrite 70 /proc/sys/kernel/sched_downmigrate
+chwrite 70 /proc/sys/kernel/sched_upmigrate
+chwrite 5 /proc/sys/kernel/sched_spill_nr_run
+chwrite 95 /proc/sys/kernel/sched_spill_load
 else
-chwrite 10 /proc/sys/kernel/sched_downmigrate
-chwrite 30 /proc/sys/kernel/sched_upmigrate
+chwrite 90 /proc/sys/kernel/sched_downmigrate
+chwrite 90 /proc/sys/kernel/sched_upmigrate
+chwrite 3 /proc/sys/kernel/sched_spill_nr_run
+chwrite 100 /proc/sys/kernel/sched_spill_load
 fi
-echo "* 双核多任务优化已完成" |  tee -a $LOG;
-elif [ $core_num = "9" ] ; then
-write /dev/cpuset/background/cpus "2-3"
-write /dev/cpuset/system-background/cpus "0-3"
-write /dev/cpuset/foreground/cpus "0-3,4-7,8-9"
-write /dev/cpuset/top-app/cpus "4-7,8-9"
-if [ $mode = "turbo" ] ; then
-chwrite 25 /proc/sys/kernel/sched_downmigrate
-chwrite 35 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "balance" ] ; then
-chwrite 35 /proc/sys/kernel/sched_downmigrate
-chwrite 55 /proc/sys/kernel/sched_upmigrate
-elif [ $mode = "powersave" ] ; then
-chwrite 55 /proc/sys/kernel/sched_downmigrate
-chwrite 75 /proc/sys/kernel/sched_upmigrate
-else
-chwrite 20 /proc/sys/kernel/sched_downmigrate
-chwrite 30 /proc/sys/kernel/sched_upmigrate
+echo "* $mode模式下CPU核心负载策略已调整" |  tee -a $LOG;
 fi
-echo "* 十核多任务优化已完成" |  tee -a $LOG;
-else
+elif [ $soc_type = "mid" ] ; then
 if [ $mode = "turbo" ] ; then
-chwrite 25 /proc/sys/kernel/sched_downmigrate
-chwrite 35 /proc/sys/kernel/sched_upmigrate
+chwrite 40 /proc/sys/kernel/sched_downmigrate
+chwrite 60 /proc/sys/kernel/sched_upmigrate
 elif [ $mode = "balance" ] ; then
-chwrite 35 /proc/sys/kernel/sched_downmigrate
-chwrite 55 /proc/sys/kernel/sched_upmigrate
+chwrite 50 /proc/sys/kernel/sched_downmigrate
+chwrite 70 /proc/sys/kernel/sched_upmigrate
+elif [ $mode = "powersave" ] ; then
+chwrite 60 /proc/sys/kernel/sched_downmigrate
+chwrite 80 /proc/sys/kernel/sched_upmigrate
+else
+chwrite 30 /proc/sys/kernel/sched_downmigrate
+chwrite 50 /proc/sys/kernel/sched_upmigrate
+fi
+if [ -e /proc/sys/kernel/sched_downmigrate ] ; then
+if [ $mode = "gamexe" ] ; then
+chwrite 40 /proc/sys/kernel/sched_downmigrate
+chwrite 40 /proc/sys/kernel/sched_upmigrate
+chwrite 10 /proc/sys/kernel/sched_spill_nr_run
+chwrite 75 /proc/sys/kernel/sched_spill_load
+elif [ $mode = "turbo" ] ; then
+chwrite 60 /proc/sys/kernel/sched_downmigrate
+chwrite 60 /proc/sys/kernel/sched_upmigrate
+chwrite 6 /proc/sys/kernel/sched_spill_nr_run
+chwrite 85 /proc/sys/kernel/sched_spill_load
+else
+chwrite 80 /proc/sys/kernel/sched_downmigrate
+chwrite 80 /proc/sys/kernel/sched_upmigrate
+chwrite 3 /proc/sys/kernel/sched_spill_nr_run
+chwrite 95 /proc/sys/kernel/sched_spill_load
+fi
+echo "* $mode模式下CPU核心负载策略已调整" |  tee -a $LOG;
+fi
+elif [ $soc_type = "low" ] ; then
+if [ $mode = "turbo" ] ; then
+chwrite 30 /proc/sys/kernel/sched_downmigrate
+chwrite 50 /proc/sys/kernel/sched_upmigrate
+elif [ $mode = "balance" ] ; then
+chwrite 40 /proc/sys/kernel/sched_downmigrate
+chwrite 60 /proc/sys/kernel/sched_upmigrate
 elif [ $mode = "powersave" ] ; then
 chwrite 50 /proc/sys/kernel/sched_downmigrate
 chwrite 70 /proc/sys/kernel/sched_upmigrate
 else
 chwrite 20 /proc/sys/kernel/sched_downmigrate
-chwrite 30 /proc/sys/kernel/sched_upmigrate
+chwrite 40 /proc/sys/kernel/sched_upmigrate
 fi
-echo "* 未知核心多任务优化已完成" |  tee -a $LOG;
+if [ -e /proc/sys/kernel/sched_downmigrate ] ; then
+if [ $mode = "gamexe" ] ; then
+chwrite 30 /proc/sys/kernel/sched_downmigrate
+chwrite 30 /proc/sys/kernel/sched_upmigrate
+chwrite 10 /proc/sys/kernel/sched_spill_nr_run
+chwrite 75 /proc/sys/kernel/sched_spill_load
+elif [ $mode = "turbo" ] ; then
+chwrite 60 /proc/sys/kernel/sched_downmigrate
+chwrite 60 /proc/sys/kernel/sched_upmigrate
+chwrite 6 /proc/sys/kernel/sched_spill_nr_run
+chwrite 85 /proc/sys/kernel/sched_spill_load
+else
+chwrite 90 /proc/sys/kernel/sched_downmigrate
+chwrite 90 /proc/sys/kernel/sched_upmigrate
+chwrite 3 /proc/sys/kernel/sched_spill_nr_run
+chwrite 100 /proc/sys/kernel/sched_spill_load
+fi
+echo "* $mode模式下CPU核心负载策略已调整" |  tee -a $LOG;
 fi
 fi
 #调整电源策略及GPU加速策略以提升游戏体验/续航
@@ -1034,19 +1321,12 @@ fi
 chwrite 40 /proc/hps/down_threshold
 echo "* MediaTek附加优化完毕" |  tee -a $LOG;
 esac
-case $SOC in exynos*)
-#Exynos
-if [ $mode = "gamexe" ] ; then
-chwrite 4 /sys/devices/system/cpu/cpu4/core_ctl/min_cpus
-chwrite 4 /sys/devices/system/cpu/cpu4/core_ctl/max_cpus
-echo "* gamexe 模式下Exynos CPU优化完毕" |  tee -a $LOG;
-else
-chwrite 2 /sys/devices/system/cpu/cpu4/core_ctl/min_cpus
-chwrite 4 /sys/devices/system/cpu/cpu4/core_ctl/max_cpus
-echo "* Exynos CPU优化完毕" |  tee -a $LOG;
-fi
-echo "* Exynos附加优化完毕" |  tee -a $LOG;
-esac
-echo "* FastTurbo全舰弹药填装完毕！" |  tee -a $LOG;
+#执行fstrim，优化磁盘性能
+fstrim -v /cache
+fstrim -v /data
+fstrim -v /system
+echo "* Fstrim 执行完毕" |  tee -a $LOG;
 #结束程序
+echo "* 感受FastTurbo带来的强劲性能吧." |  tee -a $LOG;
+FastTurbo
 exit 0
